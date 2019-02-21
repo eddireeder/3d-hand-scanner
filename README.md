@@ -10,8 +10,14 @@ as input.
 ### Prerequisites
 
 <p>
-This project makes use of both <b>OpenMVG</b> and <b>OpenMVS</b> so make sure that they are installed.
+You are required to have installed:
 </p>
+
+<ul>
+  <li>OpenCV</li>
+  <li>OpenMVG</li>
+  <li>OpenMVS</li>
+</ul>
 
 ### Building
 
