@@ -26,7 +26,7 @@ At the project root, build the executable with:
 </p>
 
 ```
-cmake
+cmake .
 make
 ```
 
