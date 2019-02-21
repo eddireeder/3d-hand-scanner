@@ -14,6 +14,7 @@ You are required to have installed:
 </p>
 
 <ul>
+  <li>CMake</li>
   <li>OpenCV</li>
   <li>OpenMVG</li>
   <li>OpenMVS</li>
