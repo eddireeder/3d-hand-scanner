@@ -1,8 +1,10 @@
 #include "opencv2/opencv.hpp"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <iostream>
 #include <array>
+#include <ctime>
 
 
 // Main function
@@ -15,7 +17,14 @@ int main(int argc, const char** argv) {
     return 0;
   }
 
+  // Make directory for reconstruction with ts
+  std::time_t result = std::time(nullptr);
+  std::string ts = std::to_string(result);
+  std::string cmd = "mkdir reconstructions/" + ts;
+  system(cmd.c_str());
+
   while(true) {
+    break;
     // Capture frame by frame
     cv::Mat frame;
     cap >> frame;
