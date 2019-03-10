@@ -65,5 +65,15 @@ int main(int argc, const char** argv) {
   //std::cout << response;
   std::cout << "Done" << std::endl;
 
+  // Search every image for hand keypoints
+
+  // Extract colour range
+
+  // Read the saved point cloud
+
+  // Remove points in dense point cloud not in colour range
+
+  // Save new point cloud
+
   return 0;
 }
