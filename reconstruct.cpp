@@ -4,6 +4,11 @@
 #include <array>
 #include <ctime>
 
+#include <opencv2/imgcodecs.hpp>
+#include <boost/filesystem.hpp>
+#include <boost/range/iterator_range.hpp>
+#include <openpose/headers.hpp>
+
 
 // Define the OpenMVG build and installed directory
 std::string openmvg_build = "/Users/Eddie/university/dissertation/cpp/libraries/sources/openMVG/build";
@@ -43,7 +48,7 @@ int main(int argc, const char** argv) {
   // Retrieve input and output directories
   std::string input_dir = argv[1];
   std::string output_dir = argv[2];
-
+/*
   // Execute SFM pipeline
   std::cout << "Executing SFM pipeline" << std::endl;
   std::string cmd = "python " + openmvg_build + "/software/SfM/SfM_GlobalPipeline.py " + input_dir + " " + output_dir;
@@ -64,8 +69,18 @@ int main(int argc, const char** argv) {
   response = exec(cmd);
   //std::cout << response;
   std::cout << "Done" << std::endl;
+*/
+  // Initialise OpenPose wrapper
+  op::Wrapper opWrapper{op::ThreadManagerMode::Asynchronous};
+  opWrapper.start();
 
   // Search every image for hand keypoints
+  boost::filesystem::path input_path(input_dir);
+  for (auto& entry: boost::make_iterator_range(boost::filesystem::directory_iterator(input_path), {})) {
+    std::cout << "Finding keypoints in: " << entry << std::endl;
+    const cv::Mat imageToProcess = cv::imread(entry.path().string());
+    std::cout << "Width: " << imageToProcess.size().width << " Height: " << imageToProcess.size().height << std::endl;
+  }
 
   // Extract colour range
 
