@@ -106,21 +106,44 @@ int main(int argc, const char** argv) {
     std::string openpose_response = exec(openpose_cmd.str());
     std::string data_start_delimiter = "Left hand keypoints: Array<T>::toString():\n";
     openpose_response.erase(0, openpose_response.find(data_start_delimiter) + data_start_delimiter.length());
-    
+
     // Loop through each keypoint (line)
     for (int i = 0; i < 21; i++) {
       std::string line = openpose_response.substr(0, openpose_response.find("\n"));
       for (int j = 0; j < 3; j++) {
         std::string value = line.substr(0, line.find(" "));
+        // Store keypoint values for later use
         keypoint_sets[file_num][i][j] = std::stof(value);
         line.erase(0, line.find(" ") + 1);
       }
       openpose_response.erase(0, openpose_response.find("\n") + 1);
     }
+
+    // Increment file num
     file_num++;
   }
 
-  // Extract colour range
+  // Extract hand colour range for each image
+  file_num = 0;
+  std::cout << "Extracting colour range and average colour from image keypoints" << std::endl;
+  for (auto& entry: boost::make_iterator_range(boost::filesystem::directory_iterator(input_path), {})) {
+    // Read image
+    cv::Mat img = cv::imread(entry);
+    // Start loop through all 21 keypoints
+    for (int i = 0; i < 21; i++) {
+      // Extract colour values at keypoint
+      float x = keypoint_sets[file_num][i][0];
+      float y = keypoint_sets[file_num][i][1];
+      float score = keypoint_sets[file_num][i][2];
+      cv::Vec3b intensity = img.at<Vec3b>(y, x);
+      cv::uchar blue = intensity.val[0];
+      cv::uchar green = intensity.val[1];
+      cv::uchar red = intensity.val[2];
+    }
+    // Increment file num
+    file_num++;
+  }
+
 
   // Read the saved point cloud
 
