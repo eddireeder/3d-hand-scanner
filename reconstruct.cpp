@@ -11,11 +11,13 @@
 
 
 // Define the OpenMVG build and installed directory
-std::string openmvg_build = "/Users/Eddie/university/dissertation/cpp/libraries/sources/openMVG/build";
-std::string openmvg_installed = "/Users/Eddie/university/dissertation/cpp/libraries/installed/openMVG";
+std::string openmvg_build = "/Users/Eddie/university/dissertation/libraries/sources/openMVG/build";
 
 // Define the OpenMVS build directory
-std::string openmvs_build = "/Users/Eddie/university/dissertation/cpp/libraries/sources/openMVS/openMVS_build";
+std::string openmvs_build = "/Users/Eddie/university/dissertation/libraries/sources/openMVS/openMVS_build";
+
+// Define the OpenPose build directory
+std::string openpose_root = "/Users/Eddie/university/dissertation/libraries/sources/openpose";
 
 
 // Function to convert a string to a char array (C-string)
@@ -48,38 +50,74 @@ int main(int argc, const char** argv) {
   // Retrieve input and output directories
   std::string input_dir = argv[1];
   std::string output_dir = argv[2];
+
 /*
-  // Execute SFM pipeline
+
+  // STAGE 1 - Execute SFM pipeline
+
   std::cout << "Executing SFM pipeline" << std::endl;
   std::string cmd = "python " + openmvg_build + "/software/SfM/SfM_GlobalPipeline.py " + input_dir + " " + output_dir;
   std::string response = exec(cmd);
   //std::cout << response;
 
-  // Convert SFM output to MVS scene
+
+  // STAGE 2 - Convert SFM output to MVS scene
+
   std::cout << "Converting SFM output to MVS scene" << std::endl;
   cmd = "mkdir " + output_dir + "/mvs";
   system(cmd.c_str());
-  cmd = openmvg_installed + "/bin/openMVG_main_openMVG2openMVS -i " + output_dir + "/reconstruction_global/sfm_data.bin -o " + output_dir + "/mvs/scene.mvs -d " + output_dir + "/mvs/scene_undistorted_images";
+  cmd = "openMVG_main_openMVG2openMVS -i " + output_dir + "/reconstruction_global/sfm_data.bin -o " + output_dir + "/mvs/scene.mvs -d " + output_dir + "/mvs/scene_undistorted_images";
   response = exec(cmd);
   //std::cout << response;
 
-  // Execute MVS pipeline
+
+  // STAGE 3 - Execute MVS pipeline
+
   std::cout << "Densifying point cloud with MVS pipeline" << std::endl;
   cmd = openmvs_build + "/bin/DensifyPointCloud " + output_dir + "/mvs/scene.mvs";
   response = exec(cmd);
   //std::cout << response;
   std::cout << "Done" << std::endl;
-*/
-  // Initialise OpenPose wrapper
-  op::Wrapper opWrapper{op::ThreadManagerMode::Asynchronous};
-  opWrapper.start();
 
-  // Search every image for hand keypoints
+*/
+
+  // STAGE 4 - Search every image for hand keypoints
+
+  std::cout << "Finding hand keypoints in images" << std::endl;
+  // Change directory to OpenPose root
+  boost::filesystem::current_path(openpose_root);
+
+  // Count number of files and create variable for storing sets of (21 * [x, y, score] keypoints)
   boost::filesystem::path input_path(input_dir);
+  int num_files = 0;
   for (auto& entry: boost::make_iterator_range(boost::filesystem::directory_iterator(input_path), {})) {
-    std::cout << "Finding keypoints in: " << entry << std::endl;
-    const cv::Mat imageToProcess = cv::imread(entry.path().string());
-    std::cout << "Width: " << imageToProcess.size().width << " Height: " << imageToProcess.size().height << std::endl;
+    num_files++;
+  }
+  float keypoint_sets[num_files][21][3];
+
+  // Loop through files in input directory
+  int file_num = 0;
+  for (auto& entry: boost::make_iterator_range(boost::filesystem::directory_iterator(input_path), {})) {
+    std::cout << "Finding hand keypoints in: " << entry << std::endl;
+
+    // Execute OpenPose usercode file on each 'entry'
+    std::ostringstream openpose_cmd;
+    openpose_cmd << "build/examples/user_code/hand_from_image.bin -image_path " << entry << " -no_display true";
+    std::string openpose_response = exec(openpose_cmd.str());
+    std::string data_start_delimiter = "Left hand keypoints: Array<T>::toString():\n";
+    openpose_response.erase(0, openpose_response.find(data_start_delimiter) + data_start_delimiter.length());
+    
+    // Loop through each keypoint (line)
+    for (int i = 0; i < 21; i++) {
+      std::string line = openpose_response.substr(0, openpose_response.find("\n"));
+      for (int j = 0; j < 3; j++) {
+        std::string value = line.substr(0, line.find(" "));
+        keypoint_sets[file_num][i][j] = std::stof(value);
+        line.erase(0, line.find(" ") + 1);
+      }
+      openpose_response.erase(0, openpose_response.find("\n") + 1);
+    }
+    file_num++;
   }
 
   // Extract colour range

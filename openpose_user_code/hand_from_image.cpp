@@ -202,7 +202,7 @@ void configureWrapper(op::Wrapper& opWrapper) {
       opWrapper.disableMultiThreading();
     }
   } catch (const std::exception& e) {
-    p::error(e.what(), __LINE__, __FUNCTION__, __FILE__);
+    op::error(e.what(), __LINE__, __FUNCTION__, __FILE__);
   }
 }
 
@@ -227,22 +227,23 @@ int tutorialApiCpp() {
 
     // Read image and hand rectangle locations
     const auto imageToProcess = cv::imread(FLAGS_image_path);
+    // Get largest center square of image
+    float square_length;
+    if (imageToProcess.cols > imageToProcess.rows) {
+      square_length = imageToProcess.rows;
+    } else {
+      square_length = imageToProcess.cols;
+    }
+    // Assign top left coords
+    const float x = (float)imageToProcess.rows/2 - square_length/2;
+    const float y = (float)imageToProcess.cols/2 - square_length/2;
+
     const std::vector<std::array<op::Rectangle<float>, 2>> handRectangles {
-      // Left/Right hands of person 0
+      // Left/Right hands of person (ignoring the right hand)
       std::array<op::Rectangle<float>, 2> {
-        op::Rectangle<float>{320.035889f, 377.675049f, 69.300949f, 69.300949f}, // Left hand
-        op::Rectangle<float>{0.f, 0.f, 0.f, 0.f}                                // Right hand
+        op::Rectangle<float>{x, y, square_length, square_length}, // Left hand
+        op::Rectangle<float>{0.f, 0.f, 0.f, 0.f}                  // Right hand
       },                              
-      // Left/Right hands of person 1
-      std::array<op::Rectangle<float>, 2> {
-        op::Rectangle<float>{80.155792f, 407.673492f, 80.812706f, 80.812706f},  // Left hand
-        op::Rectangle<float>{46.449715f, 404.559753f, 98.898178f, 98.898178f}   // Right hand
-      },
-      // Left/Right hands of person 2
-      std::array<op::Rectangle<float>, 2> {
-        op::Rectangle<float>{185.692673f, 303.112244f, 157.587555f, 157.587555f}, // Left hand
-        op::Rectangle<float>{88.984360f, 268.866547f, 117.818230f, 117.818230f}   // Right hand
-      }
     };
 
     // Create new datum
