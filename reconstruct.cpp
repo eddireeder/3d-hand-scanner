@@ -44,6 +44,18 @@ std::string exec(const std::string string_cmd) {
 }
 
 
+// Class to store hand view data
+class HandView {
+  public:
+    // Path to view image
+    boost::filesystem::path image_path;
+    // Set of 21 * [x, y, score] keypoints
+    float keypoints[21][3];
+    // Average red, blue, green values across keypoints
+    float average_rgb[3];
+};
+
+
 // Main function
 int main(int argc, const char** argv) {
 
@@ -81,142 +93,164 @@ int main(int argc, const char** argv) {
     }
   }
 
+  // Define boost file paths
+  const boost::filesystem::path input_path = boost::filesystem::system_complete(input_dir);
+  const boost::filesystem::path output_path = boost::filesystem::system_complete(output_dir);
+  const boost::filesystem::path openmvg_build_path = boost::filesystem::system_complete(openmvg_build);
+  const boost::filesystem::path openmvs_build_path = boost::filesystem::system_complete(openmvs_build);
+  const boost::filesystem::path openpose_root_path = boost::filesystem::system_complete(openpose_root);
 
+  // Count number of files in input dir
+  int num_files = 0;
+  for (auto& entry: boost::make_iterator_range(boost::filesystem::directory_iterator(input_path), {})) {
+    num_files++;
+  }
+
+
+  // ==============================================================
   // STAGE 1 - Execute SFM pipeline
+  // ==============================================================
 
-  if (stage_1) {
-    std::cout << "Executing SFM pipeline" << std::endl;
-    std::string sfm_pipeline_cmd = "python " + openmvg_build + "/software/SfM/SfM_GlobalPipeline.py " + input_dir + " " + output_dir;
-    std::string sfm_pipeline_response = exec(sfm_pipeline_cmd);
-    //std::cout << sfm_pipeline_response;
-  }
+  // Make directory for SFM output
+  boost::filesystem::path sfm_output_path = output_path / "sfm";
+  std::string mkdir_sfm_cmd = "mkdir " + sfm_output_path.string();
+  system(mkdir_sfm_cmd.c_str());
+
+  std::cout << "Executing SFM pipeline" << std::endl;
+  boost::filesystem::path sfm_pipeline_path = openmvg_build_path / "software" / "SfM" / "SfM_GlobalPipeline.py";
+  std::string sfm_pipeline_cmd = "python " + sfm_pipeline_path.string() + " " + input_path.string() + " " + sfm_output_path.string();
+  std::string sfm_pipeline_response = exec(sfm_pipeline_cmd);
 
 
+  // ==============================================================
   // STAGE 2 - Convert SFM output to MVS scene
+  // ==============================================================
 
-  if (stage_2) {
-    std::cout << "Converting SFM output to MVS scene" << std::endl;
-    std::string mkdir_cmd = "mkdir " + output_dir + "/mvs";
-    system(mkdir_cmd.c_str());
-    std::string sfm_to_mvs_cmd = "openMVG_main_openMVG2openMVS -i " + output_dir + "/reconstruction_global/sfm_data.bin -o " + output_dir + "/mvs/scene.mvs -d " + output_dir + "/mvs/scene_undistorted_images";
-    std::string sfm_to_mvs_response = exec(sfm_to_mvs_cmd);
-    //std::cout << sfm_to_mvs_response;
-  }
+  // Make directory for MVS output
+  boost::filesystem::path mvs_output_path = output_path / "mvs";
+  std::string mkdir_mvs_cmd = "mkdir " + mvs_output_path.string();
+  system(mkdir_mvs_cmd.c_str());
+
+  std::cout << "Converting SFM output to MVS scene" << std::endl;
+  boost::filesystem::path sfm_data_bin_path = output_path / "sfm" / "reconstruction_global" / "sfm_data.bin";
+  boost::filesystem::path mvs_scene_path = output_path / "mvs" / "scene.mvs";
+  boost::filesystem::path undistorted_images_path = output_path / "mvs" / "scene_undistorted_images";
+  // Can execute the following because OpenMVG installed binaries to PATH dir
+  std::string sfm_to_mvs_cmd = "openMVG_main_openMVG2openMVS -i " + sfm_data_bin_path.string() + " -o " + mvs_scene_path.string() + " -d " + undistorted_images_path.string();
+  std::string sfm_to_mvs_response = exec(sfm_to_mvs_cmd);
 
 
+  // ==============================================================
   // STAGE 3 - Execute MVS pipeline
+  // ==============================================================
 
-  if (stage_3) {
-    std::cout << "Densifying point cloud with MVS pipeline" << std::endl;
-    std::string mvs_pipeline_cmd = openmvs_build + "/bin/DensifyPointCloud " + output_dir + "/mvs/scene.mvs";
-    std::string mvs_pipeline_response = exec(mvs_pipeline_cmd);
-    //std::cout << mvs_pipeline_response;
-  }
+  std::cout << "Densifying point cloud with MVS pipeline" << std::endl;
+  boost::filesystem::path densifypointcloud_path = openmvs_build_path / "bin" / "DensifyPointCloud";
+  std::string mvs_pipeline_cmd = densifypointcloud_path.string() + " " + mvs_scene_path.string();
+  std::string mvs_pipeline_response = exec(mvs_pipeline_cmd);
 
 
+  // ==============================================================
   // STAGE 4 - Search every image for hand keypoints
+  // ==============================================================
 
-  if (stage_4) {
-    std::cout << "Finding hand keypoints in images" << std::endl;
-    // Change directory to OpenPose root
-    boost::filesystem::current_path(openpose_root);
+  // Change directory to OpenPose root
+  boost::filesystem::current_path(openpose_root_path);
 
-    // Count number of files and create variable for storing sets of (21 * [x, y, score] keypoints)
-    boost::filesystem::path input_path(input_dir);
-    int num_files = 0;
-    for (auto& entry: boost::make_iterator_range(boost::filesystem::directory_iterator(input_path), {})) {
-      num_files++;
-    }
-    float keypoint_sets[num_files][21][3];
+  // Create array for storing hand view data
+  HandView hand_views[num_files];
+  
+  // Loop through files in input directory
+  int file_num = 0;
+  for (auto& entry: boost::make_iterator_range(boost::filesystem::directory_iterator(input_path), {})) {
+    std::cout << "Finding hand keypoints in: " << entry << std::endl;
 
-    // Loop through files in input directory
-    int file_num = 0;
-    for (auto& entry: boost::make_iterator_range(boost::filesystem::directory_iterator(input_path), {})) {
-      std::cout << "Finding hand keypoints in: " << entry << std::endl;
+    // Create new Hand View and assign image path
+    HandView hand_view;
+    hand_view.image_path = boost::filesystem::system_complete(entry);
 
-      // Execute OpenPose usercode file on each 'entry'
-      std::ostringstream openpose_cmd;
-      openpose_cmd << "build/examples/user_code/hand_from_image.bin -image_path " << entry << " -no_display true";
-      std::string openpose_response = exec(openpose_cmd.str());
-      std::string data_start_delimiter = "Left hand keypoints: Array<T>::toString():\n";
-      openpose_response.erase(0, openpose_response.find(data_start_delimiter) + data_start_delimiter.length());
+    // Execute OpenPose user code file on image
+    boost::filesystem::path user_code_path = openpose_root_path / "build" / "examples" / "user_code" / "hand_from_image.bin";
+    std::string openpose_cmd = user_code_path.string() + " -image_path " + hand_view.image_path.string() + "-no_display true";
+    std::string openpose_response = exec(openpose_cmd);
+    std::string data_start_delimiter = "Left hand keypoints: Array<T>::toString():\n";
+    openpose_response.erase(0, openpose_response.find(data_start_delimiter) + data_start_delimiter.length());
 
-      // Loop through each keypoint (line)
-      for (int i = 0; i < 21; i++) {
-        std::string line = openpose_response.substr(0, openpose_response.find("\n"));
-        for (int j = 0; j < 3; j++) {
-          std::string value = line.substr(0, line.find(" "));
-          // Store keypoint values for later use
-          keypoint_sets[file_num][i][j] = std::stof(value);
-          line.erase(0, line.find(" ") + 1);
-        }
-        openpose_response.erase(0, openpose_response.find("\n") + 1);
+    // Loop through each keypoint (line)
+    for (int i = 0; i < 21; i++) {
+      std::string line = openpose_response.substr(0, openpose_response.find("\n"));
+      for (int j = 0; j < 3; j++) {
+        std::string value = line.substr(0, line.find(" "));
+        // Store keypoint values in hand view
+        hand_view.keypoints[i][j] = std::stof(value);
+        line.erase(0, line.find(" ") + 1);
       }
-
-      // Increment file num
-      file_num++;
+      openpose_response.erase(0, openpose_response.find("\n") + 1);
     }
+    // Add view to array
+    hand_views[file_num] = hand_view;
+
+    // Increment file num
+    file_num++;
   }
 
 
+  // ==============================================================
   // STAGE 5 - Filter keypoint sets
-
-  if (stage_5) {
-
-  }
+  // ==============================================================
 
 
+  // ==============================================================
   // STAGE 6 - Extract hand colour range from keypoint sets
+  // ==============================================================
 
-  if (stage_6) {
-    file_num = 0;
-    std::cout << "Extracting colour range and average colour from image keypoints" << std::endl;
-    for (auto& entry: boost::make_iterator_range(boost::filesystem::directory_iterator(input_path), {})) {
+  std::cout << "Extracting colour range and average colour from image keypoints" << std::endl;
+  for (int i = 0; i < num_files; i++) {
 
-      // Read image
-      std::ostringstream file_path;
-      file_path << entry;
-      const std::string file_path_string = file_path.str();
-      const std::string file_path_string_cut = file_path_string.substr(1, file_path_string.size() - 2);
-      const cv::Mat img = cv::imread(file_path_string_cut);
+    // Read image file
+    cv::Mat img = cv::imread(hand_views[i].image_path.string());
 
-      // Start loop through all 21 keypoints and average the color values
-      int total_blue = 0;
-      int total_green = 0;
-      int total_red = 0;
-      int num_keypoints_used = 0;
-    
-      for (int i = 0; i < 21; i++) {
-        // Extract colour values at keypoint
-        const float x = keypoint_sets[file_num][i][0];
-        const float y = keypoint_sets[file_num][i][1];
-        const float score = keypoint_sets[file_num][i][2];
-        printf("x: %f y: %f score: %f\n", x, y, score);
-        
-        cv::Vec3b intensity = img.at<cv::Vec3b>(y, x);
-        //std::cout << intensity << std::endl;
+    // Loop through all 21 keypoints and average the colour values
+    int total_blue = 0;
+    int total_green = 0;
+    int total_red = 0;
 
-        total_blue = total_blue + intensity[0];
-        total_green = total_green + intensity[1];
-        total_red = total_red + intensity[2];
-      }
+    for (int keypoint_i; keypoint_i < 21; keypoint_i++) {
+      // Extract colour values at keypoint
+      const float x = hand_views[i].keypoints[keypoint_i][0];
+      const float y = hand_views[i].keypoints[keypoint_i][1];
+      const float score = hand_views[i].keypoints[keypoint_i][2];
+      printf("x: %f y: %f score: %f\n", x, y, score);
 
-      const float average_blue = (float) total_blue/21;
-      const float average_green = (float) total_green/21;
-      const float average_red = (float) total_red/21;
-      printf("r: %f g: %f b: %f\n", average_red, average_green, average_blue);
-
-      // Increment file num
-      file_num++;
+      cv::Vec3b intensity = img.at<cv::Vec3b>(y, x);
+      total_blue = total_blue + intensity[0];
+      total_green = total_green + intensity[1];
+      total_red = total_red + intensity[2];
     }
+
+    const float average_blue = (float) total_blue/21;
+    const float average_green = (float) total_green/21;
+    const float average_red = (float) total_red/21;
+    printf("r: %f g: %f b: %f\n", average_red, average_green, average_blue);
+
+    // Assign colour values to hand view
+    hand_views[i].average_rgb[0] = average_red;
+    hand_views[i].average_rgb[1] = average_green;
+    hand_views[i].average_rgb[2] = average_blue;
   }
 
 
+  // ==============================================================
   // STAGE 7 - Locate 21 keypoints in 3D space
+  // ==============================================================
 
-  if (stage_7) {
+  // Convert sfm_data.bin to json
+  boost::filesystem::path sfm_data_json_path = output_path / "sfm" / "reconstruction_global" / "sfm_data.json";
+  std::string sfm_data_to_json_cmd = "openMVG_main_ConvertSfM_DataFormat -i " + sfm_data_bin_path.string() + " -o " + sfm_data_json_path.string();
+  system(sfm_data_to_json_cmd.c_str());
 
-  }
+  // Read sfm_data.json to get camera/view information (intrinsics and extrinsics)
+
 
 
   // Read the saved point cloud
