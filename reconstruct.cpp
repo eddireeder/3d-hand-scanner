@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <iostream>
+#include <fstream>
 #include <array>
 #include <ctime>
-#include <fstream>
 
 #include <nlohmann/json.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -11,6 +11,14 @@
 #include <boost/range/iterator_range.hpp>
 #include <openpose/headers.hpp>
 #include <openMVG/numeric/numeric.h>
+#include <openMVG/multiview/projection.hpp>
+#include <openMVG/multiview/triangulation_nview.hpp>
+#include <openMVG/multiview/triangulation.hpp>
+#include <openMVG/sfm/sfm_data.hpp>
+#include <openMVG/sfm/sfm_data_io.hpp>
+#include <openMVG/cameras/Camera_Pinhole_Radial.hpp>
+#include <openMVG/sfm/sfm_data_io_ply.hpp>
+#include <openMVG/sfm/sfm_data_triangulation.hpp>
 
 
 // Define the OpenMVG build and installed directory
@@ -47,6 +55,29 @@ std::string exec(const std::string string_cmd) {
 }
 
 
+// Function to write vertices to .ply file
+void write_to_ply(const openMVG::Vec3 vertices[], const int num_vertices, const std::string filepath) {
+
+  std::cout << "Writing to " << filepath << std::endl;
+
+  std::ofstream file;
+  file.open(filepath);
+  file << "ply\n";
+  file << "format ascii 1.0\n";
+  file << "element vertex " << num_vertices << "\n";
+  file << "property float x\n";
+  file << "property float y\n";
+  file << "property float z\n";
+  file << "end_header\n";
+
+  for (int i = 0; i < num_vertices; i++) {
+    file << vertices[i][0] << " " << vertices[i][1] << " " << vertices[i][2] << "\n";
+  }
+
+  file.close();
+}
+
+
 // Class to store hand view data
 class HandView {
   public:
@@ -57,8 +88,14 @@ class HandView {
     float principal_point[2];
 
     // Camera extrinsics/pose
-    openMVG::Vec3f position;
+    openMVG::Vec3 center;
     openMVG::Mat3 rotation;
+
+    // Camera translation
+    openMVG::Vec3 translation;
+
+    // View projection matrix
+    openMVG::Mat34 projection;
 
     // Set of 21 * [x, y, score] keypoints
     float keypoints[21][3];
@@ -73,13 +110,6 @@ int main(int argc, const char** argv) {
   // Initialise arguments
   std::string input_dir = "";
   std::string output_dir = "";
-  bool stage_1 = false;
-  bool stage_2 = false;
-  bool stage_3 = false;
-  bool stage_4 = false;
-  bool stage_5 = false;
-  bool stage_6 = false;
-  bool stage_7 = false;
 
   // Loop through arguments and check for flags
   for (int i = 1; i < argc; i++) {
@@ -87,26 +117,13 @@ int main(int argc, const char** argv) {
       input_dir = argv[i + 1];
     } else if (strcmp(argv[i], "--output") == 0) {
       output_dir = argv[i + 1];
-    } else if (strcmp(argv[i], "--stage-1") == 0) {
-      stage_1 = true;
-    } else if (strcmp(argv[i], "--stage-2") == 0) {
-      stage_2 = true;
-    } else if (strcmp(argv[i], "--stage-3") == 0) {
-      stage_3 = true;
-    } else if (strcmp(argv[i], "--stage-4") == 0) {
-      stage_4 = true;
-    } else if (strcmp(argv[i], "--stage-5") == 0) {
-      stage_5 = true;
-    } else if (strcmp(argv[i], "--stage-6") == 0) {
-      stage_6 = true;
-    } else if (strcmp(argv[i], "--stage-7") == 0) {
-      stage_7 = true;
     }
   }
 
   // Define boost file paths
   const boost::filesystem::path input_path = boost::filesystem::system_complete(input_dir);
   const boost::filesystem::path output_path = boost::filesystem::system_complete(output_dir);
+
   const boost::filesystem::path openmvg_build_path = boost::filesystem::system_complete(openmvg_build);
   const boost::filesystem::path openmvs_build_path = boost::filesystem::system_complete(openmvs_build);
   const boost::filesystem::path openpose_root_path = boost::filesystem::system_complete(openpose_root);
@@ -117,11 +134,11 @@ int main(int argc, const char** argv) {
     num_files++;
   }
 
-/*
+
   // ==============================================================
   // STAGE 1 - Execute SFM pipeline
   // ==============================================================
-
+/*
   // Make directory for SFM output
   boost::filesystem::path sfm_output_path = output_path / "sfm";
   std::string mkdir_sfm_cmd = "mkdir " + sfm_output_path.string();
@@ -132,11 +149,11 @@ int main(int argc, const char** argv) {
   std::string sfm_pipeline_cmd = "python " + sfm_pipeline_path.string() + " " + input_path.string() + " " + sfm_output_path.string();
   std::string sfm_pipeline_response = exec(sfm_pipeline_cmd);
 */
-/*
+
   // ==============================================================
   // STAGE 2 - Convert SFM output to MVS scene
   // ==============================================================
-
+/*
   // Make directory for MVS output
   boost::filesystem::path mvs_output_path = output_path / "mvs";
   std::string mkdir_mvs_cmd = "mkdir " + mvs_output_path.string();
@@ -151,133 +168,321 @@ int main(int argc, const char** argv) {
   std::string sfm_to_mvs_cmd = "openMVG_main_openMVG2openMVS -i " + sfm_data_bin_path.string() + " -o " + mvs_scene_path.string() + " -d " + undistorted_images_path.string();
   std::string sfm_to_mvs_response = exec(sfm_to_mvs_cmd);
 */
-/*
+
   // ==============================================================
   // STAGE 3 - Execute MVS pipeline
   // ==============================================================
-
+/*
   std::cout << "Densifying point cloud with MVS pipeline" << std::endl;
 
   boost::filesystem::path densifypointcloud_path = openmvs_build_path / "bin" / "DensifyPointCloud";
-  std::string mvs_pipeline_cmd = densifypointcloud_path.string() + " " + mvs_scene_path.string();
+  std::string mvs_pipeline_cmd = densifypointcloud_path.string() + " " + mvs_scene_path.string() + " -w " + mvs_output_path.string();
   std::string mvs_pipeline_response = exec(mvs_pipeline_cmd);
 */
 
   // ==============================================================
-  // STAGE 4 - Extract SFM data and create Hand Views
+  // STAGE 4 - Extract SFM data
   // ==============================================================
+/*
+  std::cout << "Loading sfm_data from sfm_data.bin" << std::endl;
 
-  std::cout << "Extracting camera parameters from sfm_data" << std::endl;
+  // Initialise empty sfm_data
+  openMVG::sfm::SfM_Data sfm_data;
+  sfm_data.s_root_path = input_path.string();
 
   // Convert sfm_data.bin to json
+  boost::filesystem::path sfm_data_bin_path = output_path / "sfm" / "reconstruction_global" / "sfm_data.bin";
   boost::filesystem::path sfm_data_json_path = output_path / "sfm" / "reconstruction_global" / "sfm_data.json";
-  //std::string sfm_data_to_json_cmd = "openMVG_main_ConvertSfM_DataFormat -i " + sfm_data_bin_path.string() + " -o " + sfm_data_json_path.string();
-  //system(sfm_data_to_json_cmd.c_str());
+  std::string sfm_data_to_json_cmd = "openMVG_main_ConvertSfM_DataFormat -i " + sfm_data_bin_path.string() + " -o " + sfm_data_json_path.string();
+  system(sfm_data_to_json_cmd.c_str());
 
-  // Read sfm_data.json to extract camera/view information (intrinsics and extrinsics)
+  // Read sfm_data.json to extract camera/view information (views, intrinsics and poses)
   std::ifstream i(sfm_data_json_path.string());
   nlohmann::json sfm_data_json = nlohmann::json::parse(i);
   nlohmann::json json_views = sfm_data_json["views"];
   nlohmann::json json_intrinsics = sfm_data_json["intrinsics"];
   nlohmann::json json_poses = sfm_data_json["extrinsics"];
+
+  // Iterate through views
   const int num_views = json_views.size();
-  std::cout << "Number of views in sfm_data: " << num_views << std::endl;
+  for (int i = 0; i < num_views; i++) {
 
-  // Create an array for hand view objects
-  HandView hand_views[num_views];
-
-  // Iterate through json views
-  int view_count = 0;
-  for (auto view_it = json_views.begin(); view_it != json_views.end(); ++view_it) {
-    nlohmann::json json_view = view_it.value();
-
-    // Create new hand view object
-    HandView hand_view;
-
-    // Assign image path to object
-    std::string filename = json_view["value"]["ptr_wrapper"]["data"]["filename"];
-    boost::filesystem::path json_view_image_path = boost::filesystem::system_complete(input_path / filename);
-    hand_view.image_path = json_view_image_path;
-
-    // Assign the intrinsic parameters
-    int intrinsic_id = json_view["value"]["ptr_wrapper"]["data"]["id_intrinsic"];
-    for (auto intrinsic_it = json_intrinsics.begin(); intrinsic_it != json_intrinsics.end(); ++intrinsic_it) {
-      if ((int) intrinsic_it.value()["key"] == intrinsic_id) {
-        hand_view.focal_length = intrinsic_it.value()["value"]["ptr_wrapper"]["data"]["focal_length"];
-        hand_view.principal_point[0] = intrinsic_it.value()["value"]["ptr_wrapper"]["data"]["principal_point"][0];
-        hand_view.principal_point[1] = intrinsic_it.value()["value"]["ptr_wrapper"]["data"]["principal_point"][1];
-        break;
-      }
-    }
-
-    // Assign the extrinsic parameters/pose
-    int pose_id = json_view["value"]["ptr_wrapper"]["data"]["id_pose"];
-    for (auto pose_it = json_poses.begin(); pose_it != json_poses.end(); ++pose_it) {
-      if ((int) pose_it.value()["key"] == pose_id) {
-        hand_view.position[0] = pose_it.value()["value"]["center"][0];
-        hand_view.position[1] = pose_it.value()["value"]["center"][1];
-        hand_view.position[2] = pose_it.value()["value"]["center"][2];
-        hand_view.rotation(0, 0) = pose_it.value()["value"]["rotation"][0][0];
-        hand_view.rotation(0, 1) = pose_it.value()["value"]["rotation"][0][1];
-        hand_view.rotation(0, 2) = pose_it.value()["value"]["rotation"][0][2];
-        hand_view.rotation(1, 0) = pose_it.value()["value"]["rotation"][1][0];
-        hand_view.rotation(1, 1) = pose_it.value()["value"]["rotation"][1][1];
-        hand_view.rotation(1, 2) = pose_it.value()["value"]["rotation"][1][2];
-        hand_view.rotation(2, 0) = pose_it.value()["value"]["rotation"][2][0];
-        hand_view.rotation(2, 1) = pose_it.value()["value"]["rotation"][2][1];
-        hand_view.rotation(2, 2) = pose_it.value()["value"]["rotation"][2][2];
-        std::cout << hand_view.rotation << std::endl;
-        break;
-      }
-    }
-
-    // Add hand object to array
-    hand_views[view_count] = hand_view;
-    view_count++;
+    // Retrieve view
+    openMVG::IndexT key = json_views[i]["key"];
+    nlohmann::json view = json_views[i]["value"]["ptr_wrapper"]["data"];
+    sfm_data.views[key] = std::make_shared<openMVG::sfm::View>(
+      view["filename"].get<std::string>(),
+      view["id_view"].get<openMVG::IndexT>(),
+      view["id_intrinsic"].get<openMVG::IndexT>(),
+      view["id_pose"].get<openMVG::IndexT>(),
+      view["width"].get<openMVG::IndexT>(),
+      view["height"].get<openMVG::IndexT>()
+    );
   }
 
+  // Iterate through poses
+  const int num_poses = json_poses.size();
+  for (int i = 0; i < num_poses; i++) {
+
+    // Retrieve pose
+    openMVG::IndexT key = json_poses[i]["key"];
+    nlohmann::json pose = json_poses[i]["value"];
+    openMVG::Mat3 r;
+    openMVG::Vec3 c;
+    r(0, 0) = pose["rotation"][0][0];
+    r(0, 1) = pose["rotation"][0][1];
+    r(0, 2) = pose["rotation"][0][2];
+    r(1, 0) = pose["rotation"][1][0];
+    r(1, 1) = pose["rotation"][1][1];
+    r(1, 2) = pose["rotation"][1][2];
+    r(2, 0) = pose["rotation"][2][0];
+    r(2, 1) = pose["rotation"][2][1];
+    r(2, 2) = pose["rotation"][2][2];
+    c(0) = pose["center"][0];
+    c(1) = pose["center"][1];
+    c(2) = pose["center"][2];
+    sfm_data.poses[key] = openMVG::geometry::Pose3(r, c);
+  }
+
+  // Iterate through intrinsics
+  const int num_intrinsics = json_intrinsics.size();
+  for (int i = 0; i < num_intrinsics; i++) {
+
+    // Retrieve intrinsic
+    openMVG::IndexT key = json_intrinsics[i]["key"];
+    nlohmann::json intrinsic = json_intrinsics[i]["value"]["ptr_wrapper"]["data"];
+    
+    sfm_data.intrinsics[key] = std::make_shared<openMVG::cameras::Pinhole_Intrinsic_Radial_K3>(
+      intrinsic["width"].get<int>(),
+      intrinsic["height"].get<int>(),
+      intrinsic["focal_length"].get<double>(),
+      intrinsic["principal_point"][0].get<double>(),
+      intrinsic["principal_point"][1].get<double>(),
+      intrinsic["disto_k3"][0].get<double>(),
+      intrinsic["disto_k3"][1].get<double>(),
+      intrinsic["disto_k3"][2].get<double>()
+    );
+  }
+*/
 
   // ==============================================================
   // STAGE 5 - Search each view for hand keypoints
   // ==============================================================
 
-  std::cout << "Searching views for hand keypoints" << std::endl;
+  // Create directory if it doesn't exist
+  if (!boost::filesystem::is_directory(output_path / "hand_keypoints")) {
+    boost::filesystem::create_directory(output_path / "hand_keypoints");
+  }
 
-  // Change directory to OpenPose root
-  boost::filesystem::current_path(openpose_root_path);
-  
-  // Loop through each hand view
-  for (int i = 0; i < num_views; i++) {
+  // Initialise keypoints variable
+  std::stringstream openpose_keypoints;
 
-    // Execute OpenPose user code file on image
-    boost::filesystem::path user_code_path = openpose_root_path / "build" / "examples" / "user_code" / "hand_from_image.bin";
-    std::string openpose_cmd = user_code_path.string() + " -image_path " + hand_views[i].image_path.string() + " -no_display true";
-    std::string openpose_response = exec(openpose_cmd);
+  // Check for keypoints file
+  if (boost::filesystem::exists(output_path / "hand_keypoints" / "2d_keypoints.dat")) {
+
+    // Read file
+    std::ifstream keypoints_infile((output_path / "hand_keypoints" / "2d_keypoints.dat").string());
+    std::string line;
+    while (getline(keypoints_infile, line)) {
+      openpose_keypoints << line << std::endl;
+    }
+    keypoints_infile.close();
+
+  } else {
+
+    // Change directory to OpenPose root
+    boost::filesystem::current_path(openpose_root_path);
+
+    // Only extract keypoints for views with poses and intrinsics
+    bool first_detection_iteration = true;
+    for (openMVG::IndexT view_i = 0; view_i < num_views; view_i++) {
+      std::shared_ptr<openMVG::sfm::View> view = sfm_data.views[view_i];
+      if (sfm_data.IsPoseAndIntrinsicDefined(view.get())) {
+        
+        // Log the current view
+        if (first_detection_iteration) {
+          first_detection_iteration = false;
+        } else {
+          std::cout << "\33[2K\r";
+        }
+        std::cout << "Searching image " << view->s_Img_path << " for keypoints" << std::flush;
+
+        // Execute OpenPose user code file on image
+        boost::filesystem::path user_code_path = openpose_root_path / "build" / "examples" / "user_code" / "hand_from_image.bin";
+        boost::filesystem::path image_path = input_path / view->s_Img_path;
+        std::string openpose_cmd = user_code_path.string() + " -image_path " + image_path.string() + " -no_display true";
+        std::string openpose_response = exec(openpose_cmd);
+        openpose_keypoints << "VIEW ID: " << view_i << std::endl << openpose_response;
+      }
+    }
+    // Print new line
+    std::cout << std::endl;
+
+    // Write to file
+    std::ofstream keypoints_outfile((output_path / "hand_keypoints" / "2d_keypoints.dat").string());
+    keypoints_outfile << openpose_keypoints.str();
+    keypoints_outfile.close();
+  }
+
+  // Convert keypoints to string for parsing
+  std::string openpose_keypoints_string = openpose_keypoints.str();
+
+  // Repeat for number of poses that exist and parse views
+  for (int i = 0; i < num_poses; i++) {
+
+    // Move to next view
+    std::string view_start_delimiter = "VIEW ID: ";
+    openpose_keypoints_string.erase(0, openpose_keypoints_string.find(view_start_delimiter) + view_start_delimiter.length());
+
+    // Extract view id
+    openMVG::IndexT view_i = std::stof(openpose_keypoints_string.substr(0, openpose_keypoints_string.find(" ")));
+
+    // Parse keypoints
     std::string data_start_delimiter = "Left hand keypoints: Array<T>::toString():\n";
-    openpose_response.erase(0, openpose_response.find(data_start_delimiter) + data_start_delimiter.length());
+    openpose_keypoints_string.erase(0, openpose_keypoints_string.find(data_start_delimiter) + data_start_delimiter.length());
 
     // Loop through each keypoint (line)
-    for (int keypoint_i = 0; keypoint_i < 21; keypoint_i++) {
-      std::string line = openpose_response.substr(0, openpose_response.find("\n"));
-      for (int coord_i = 0; coord_i < 3; coord_i++) {
-        std::string value = line.substr(0, line.find(" "));
-        // Store keypoint values in hand view
-        hand_views[i].keypoints[keypoint_i][coord_i] = std::stof(value);
-        line.erase(0, line.find(" ") + 1);
+    for (openMVG::IndexT keypoint_i = 0; keypoint_i < 21; keypoint_i++) {
+      std::string line = openpose_keypoints_string.substr(0, openpose_keypoints_string.find("\n"));
+      // Extract keypoint (x, y, score)
+      float x = std::stof(line.substr(0, line.find(" ")));
+      line.erase(0, line.find(" ") + 1);
+      float y = std::stof(line.substr(0, line.find(" ")));
+      line.erase(0, line.find(" ") + 1);
+      float score = std::stof(line.substr(0, line.find(" ")));
+      line.erase(0, line.find(" ") + 1);
+      openpose_keypoints_string.erase(0, openpose_keypoints_string.find("\n") + 1);
+
+      // Create Observation and add it to sfm_data track (if score is high enough)
+      if (score > 0.2) {
+        std::cout << "Inserting observation with keypoint_i " << keypoint_i << " and view_i " << view_i << " -> score " << score << std::endl;
+        sfm_data.structure[keypoint_i].obs[view_i] = openMVG::sfm::Observation(openMVG::Vec2(x, y), keypoint_i);
       }
-      openpose_response.erase(0, openpose_response.find("\n") + 1);
     }
   }
 
+
+  // ==============================================================
+  // STAGE 6 - Locate 21 keypoints in 3D space
+  // ==============================================================
 /*
-  // ==============================================================
-  // STAGE 6 - Filter keypoint sets
-  // ==============================================================
+  openMVG::sfm::SfM_Data_Structure_Computation_Robust structure_computation_robust = openMVG::sfm::SfM_Data_Structure_Computation_Robust(4.0, 3, 3, true);
+  structure_computation_robust.triangulate(sfm_data);
+*/
 
-  // ==============================================================
-  // STAGE 8 - Locate 21 keypoints in 3D space
-  // ==============================================================
+  // Take a look at images/views and manually select 2 to use (I've selected IMG_2215.JPG and IMG_2236.JPG)
+  // Find the views for these images (view 9 and view 30)
+  // Find the best track/keypoint to triangulate for view 9 and 30 (It is track/keypoint 11)
 
+  std::cout << sfm_data.structure[11].obs[9].x << std::endl;
+  std::cout << sfm_data.structure[11].obs[30].x << std::endl;
+
+  std::shared_ptr<openMVG::sfm::View> view_9 = sfm_data.views[9];
+  std::shared_ptr<openMVG::sfm::View> view_30 = sfm_data.views[30];
+
+  std::shared_ptr<openMVG::cameras::IntrinsicBase> cam = sfm_data.intrinsics[0];
+
+  openMVG::geometry::Pose3 pose_9 = sfm_data.GetPoseOrDie(view_9.get());
+  openMVG::geometry::Pose3 pose_30 = sfm_data.GetPoseOrDie(view_30.get());
+
+  std::vector<openMVG::Vec3> bearing;
+  std::vector<openMVG::Mat34> poses;
+  bearing.reserve(2);
+  poses.reserve(2);
+
+  openMVG::Vec3 bearing_1 = (*cam)(cam->get_ud_pixel(sfm_data.structure[11].obs[9].x));
+  openMVG::Vec3 bearing_2 = (*cam)(cam->get_ud_pixel(sfm_data.structure[11].obs[30].x));
+
+  bearing.emplace_back(bearing_1);
+  bearing.emplace_back(bearing_2);
+
+  openMVG::Mat34 projection_matrix_1 = pose_9.asMatrix();
+  openMVG::Mat34 projection_matrix_2 = pose_30.asMatrix();
+
+  poses.emplace_back(projection_matrix_1);
+  poses.emplace_back(projection_matrix_2);
+
+  openMVG::Vec4 Xhomogeneous;
+
+/*
+  const Eigen::Map<const openMVG::Mat3X> bearing_matrix(bearing[0].data(), 3, bearing.size());
+  
+  openMVG::TriangulateNViewAlgebraic (
+    bearing_matrix,
+    poses, // Ps are projective cameras.
+    &Xhomogeneous
+  );
+*/
+
+  openMVG::TriangulateDLT(projection_matrix_1, bearing_1, projection_matrix_2, bearing_2, &Xhomogeneous);
+
+  sfm_data.structure[11].X = Xhomogeneous.hnormalized();
+
+
+
+
+
+/*
+  // Loop through each keypoint track
+  for (openMVG::IndexT track_i = 0; track_i < 21; track_i++) {
+
+    std::cout << "Triangulating keypoint tracks" << std::endl;
+
+    // DEBUG: Print number of observations
+    std::cout << "Size: " << sfm_data.structure[track_i].obs.size() << std::endl;
+
+    // Fill the samples set
+    std::set<openMVG::IndexT> samples;
+    for (size_t i = 0; i < sfm_data.structure[track_i].obs.size(); ++i) {
+      samples.insert(i);
+    }
+
+
+    if (samples.size() >= 2 && sfm_data.structure[track_i].obs.size() >= 2) {
+
+      std::vector<openMVG::Vec3> bearing;
+      std::vector<openMVG::Mat34> poses;
+      bearing.reserve(samples.size());
+      poses.reserve(samples.size());
+
+      for (const auto& idx : samples) {
+
+        openMVG::sfm::Observations::const_iterator itObs = sfm_data.structure[track_i].obs.begin();
+        std::advance(itObs, idx);
+        const openMVG::sfm::View * view = sfm_data.views.at(itObs->first).get();
+        if (!sfm_data.IsPoseAndIntrinsicDefined(view)) {
+          continue;
+        }
+        const openMVG::cameras::IntrinsicBase * cam = sfm_data.GetIntrinsics().at(view->id_intrinsic).get();
+        const openMVG::geometry::Pose3 pose = sfm_data.GetPoseOrDie(view);
+        bearing.emplace_back((*cam)(cam->get_ud_pixel(itObs->second.x)));
+        poses.emplace_back(pose.asMatrix());
+      }
+      if (bearing.size() >= 2) {
+        const Eigen::Map<const openMVG::Mat3X> bearing_matrix(bearing[0].data(), 3, bearing.size());
+        openMVG::Vec4 Xhomogeneous;
+        openMVG::TriangulateNViewAlgebraic (
+          bearing_matrix,
+          poses, // Ps are projective cameras.
+          &Xhomogeneous
+        );
+        sfm_data.structure[track_i].X = Xhomogeneous.hnormalized();
+      }
+    } else {
+      std::cout << "Not enough keypoint observations to triangulate" << std::endl;
+    }
+  }
+*/
+  // Retrieve 3D points
+  openMVG::Vec3 hand_keypoint_vertices[21];
+  for (openMVG::IndexT i = 0; i < 21; i++) {
+    hand_keypoint_vertices[i] = sfm_data.structure[i].X;
+  }
+
+  // Write to .ply file
+  write_to_ply(hand_keypoint_vertices, 21, (output_path / "hand_keypoints" / "3d_keypoints_dlt.ply").string());
+
+/*
   // ==============================================================
   // STAGE 7 - Extract hand colour range from keypoint sets
   // ==============================================================
@@ -316,7 +521,6 @@ int main(int argc, const char** argv) {
     hand_views[i].average_rgb[1] = average_green;
     hand_views[i].average_rgb[2] = average_blue;
   }
-
 */
 
 
