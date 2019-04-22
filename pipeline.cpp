@@ -183,7 +183,7 @@ int main(int argc, const char** argv) {
   // ==============================================================
   // STAGE 4 - Extract SFM data
   // ==============================================================
-/*
+
   std::cout << "Loading sfm_data from sfm_data.bin" << std::endl;
 
   // Initialise empty sfm_data
@@ -263,7 +263,7 @@ int main(int argc, const char** argv) {
       intrinsic["disto_k3"][2].get<double>()
     );
   }
-*/
+
 
   // ==============================================================
   // STAGE 5 - Search each view for hand keypoints
@@ -310,7 +310,7 @@ int main(int argc, const char** argv) {
         // Execute OpenPose user code file on image
         boost::filesystem::path user_code_path = openpose_root_path / "build" / "examples" / "user_code" / "hand_from_image.bin";
         boost::filesystem::path image_path = input_path / view->s_Img_path;
-        std::string openpose_cmd = user_code_path.string() + " -image_path " + image_path.string() + " -no_display true";
+        std::string openpose_cmd = user_code_path.string() + " -image_path " + image_path.string() + " -no_display true -write_images_format png -write_images " + (output_path / "hand_keypoints" / view->s_Img_path).string();
         std::string openpose_response = exec(openpose_cmd);
         openpose_keypoints << "VIEW ID: " << view_i << std::endl << openpose_response;
       }
@@ -368,7 +368,7 @@ int main(int argc, const char** argv) {
 /*
   openMVG::sfm::SfM_Data_Structure_Computation_Robust structure_computation_robust = openMVG::sfm::SfM_Data_Structure_Computation_Robust(4.0, 3, 3, true);
   structure_computation_robust.triangulate(sfm_data);
-*/
+
 
   // Take a look at images/views and manually select 2 to use (I've selected IMG_2215.JPG and IMG_2236.JPG)
   // Find the views for these images (view 9 and view 30)
@@ -404,7 +404,6 @@ int main(int argc, const char** argv) {
 
   openMVG::Vec4 Xhomogeneous;
 
-/*
   const Eigen::Map<const openMVG::Mat3X> bearing_matrix(bearing[0].data(), 3, bearing.size());
   
   openMVG::TriangulateNViewAlgebraic (
@@ -413,11 +412,11 @@ int main(int argc, const char** argv) {
     &Xhomogeneous
   );
 */
-
+/*
   openMVG::TriangulateDLT(projection_matrix_1, bearing_1, projection_matrix_2, bearing_2, &Xhomogeneous);
 
   sfm_data.structure[11].X = Xhomogeneous.hnormalized();
-
+*/
 
 
 
@@ -473,6 +472,7 @@ int main(int argc, const char** argv) {
     }
   }
 */
+/*
   // Retrieve 3D points
   openMVG::Vec3 hand_keypoint_vertices[21];
   for (openMVG::IndexT i = 0; i < 21; i++) {
@@ -481,7 +481,7 @@ int main(int argc, const char** argv) {
 
   // Write to .ply file
   write_to_ply(hand_keypoint_vertices, 21, (output_path / "hand_keypoints" / "3d_keypoints_dlt.ply").string());
-
+*/
 /*
   // ==============================================================
   // STAGE 7 - Extract hand colour range from keypoint sets
