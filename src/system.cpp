@@ -3,6 +3,7 @@
 #include <iostream>
 #include <array>
 #include <cstring>
+#include <memory>
 
 #include "system.h"
 
