@@ -20,10 +20,11 @@
 //#include <openMVG/sfm/sfm_data_io_ply.hpp>
 //#include <openMVG/sfm/sfm_data_triangulation.hpp>
 
-//#include "system.h"
+#include "system.h"
 
 
 // Function to write vertices to .ply file
+/*
 void write_to_ply(const openMVG::Vec3 vertices[], const int num_vertices, const std::string filepath) {
 
   std::cout << "Writing to " << filepath << std::endl;
@@ -44,9 +45,11 @@ void write_to_ply(const openMVG::Vec3 vertices[], const int num_vertices, const 
 
   file.close();
 }
+*/
 
 
 // Class to store hand view data
+/*
 class HandView {
   public:
     boost::filesystem::path image_path;
@@ -70,6 +73,7 @@ class HandView {
     bool use_keypoints = true;
     float average_rgb[3];  
 };
+*/
 
 
 // Main function
