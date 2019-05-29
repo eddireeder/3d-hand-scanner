@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <iostream>
 #include <array>
+#include <cstring>
 
 #include "system.h"
 
@@ -9,7 +10,7 @@
 // Function to convert a string to a char array (C-string)
 char * to_char_array(std::string string) {
   char * char_array = new char [string.length() + 1];
-  strcpy(char_array, string.c_str());
+  std::strcpy(char_array, string.c_str());
   return char_array;
 }
 
