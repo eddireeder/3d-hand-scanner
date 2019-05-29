@@ -6,21 +6,21 @@
 #include <ctime>
 
 //#include <nlohmann/json.hpp>
-#include <opencv2/imgcodecs.hpp>
+//#include <opencv2/imgcodecs.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/range/iterator_range.hpp>
-#include <openpose/headers.hpp>
-#include <openMVG/numeric/numeric.h>
-#include <openMVG/multiview/projection.hpp>
-#include <openMVG/multiview/triangulation_nview.hpp>
-#include <openMVG/multiview/triangulation.hpp>
-#include <openMVG/sfm/sfm_data.hpp>
-#include <openMVG/sfm/sfm_data_io.hpp>
-#include <openMVG/cameras/Camera_Pinhole_Radial.hpp>
-#include <openMVG/sfm/sfm_data_io_ply.hpp>
-#include <openMVG/sfm/sfm_data_triangulation.hpp>
+//#include <openpose/headers.hpp>
+//#include <openMVG/numeric/numeric.h>
+//#include <openMVG/multiview/projection.hpp>
+//#include <openMVG/multiview/triangulation_nview.hpp>
+//#include <openMVG/multiview/triangulation.hpp>
+//#include <openMVG/sfm/sfm_data.hpp>
+//#include <openMVG/sfm/sfm_data_io.hpp>
+//#include <openMVG/cameras/Camera_Pinhole_Radial.hpp>
+//#include <openMVG/sfm/sfm_data_io_ply.hpp>
+//#include <openMVG/sfm/sfm_data_triangulation.hpp>
 
-#include "system.h"
+//#include "system.h"
 
 
 // Function to write vertices to .ply file
