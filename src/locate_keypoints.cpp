@@ -6,9 +6,7 @@
 #include <ctime>
 
 #include <boost/filesystem.hpp>
-#include <boost/range/iterator_range.hpp>
-#include <openpose/headers.hpp>
-#include <OpenMVS/MVS/Scene.h>
+#include "OpenMVS/MVS.h"
 #include "system.h"
 
 
@@ -72,10 +70,25 @@ std::vector<Keypoint> detect_keypoints(std::string filename) {
 void locate_keypoints(std::vector<Keypoint> keypoints, std::string mvs_filename) {
 
   // Open .mvs file and save to object
+  MVS::Scene scene;
+  if (!scene.LoadInterface(mvs_filename)) {
+    std::cout << "Could not load " << mvs_filename << std::endl;
+  }
 
-  // Locate view corresponding to keypoints
+  // Locate image corresponding to keypoints
+  std::cout << scene.images[0].scale << " " << scene.images[0].width << " " << scene.images[0].height << std::endl;
+  MVS::Image image = scene.images[0];
 
-  // Backtrace
+  // Extract the camera from the image
+  MVS::Camera camera = image.camera;
+  std::cout << camera.K << std::endl;
+
+  // Cast a ray from the view in the direction of the keypoint
+  MVS::TPoint2 x = MVS::TPoint2(keypoints[0].x, keypoints[1].y);
+  MVS::TPoint3 ray = MVS::RayPoint(x);
+
+  // See where the ray intersects the mesh
+  
 }
 
 
@@ -84,9 +97,13 @@ int main(int argc, const char** argv) {
   
   // Test keypoint detection
   std::vector<Keypoint> keypoints;
+  /*
   keypoints = detect_keypoints(argv[1]);
 
   for (int i = 0; i < 21; i++) {
     std::cout << keypoints[i].x << " " << keypoints[i].y << " " << keypoints[i].score << std::endl;
   }
+  */
+
+  locate_keypoints(keypoints, argv[1]);
 }

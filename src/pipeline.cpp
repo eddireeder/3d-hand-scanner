@@ -20,39 +20,7 @@
 #include <openMVG/sfm/sfm_data_io_ply.hpp>
 #include <openMVG/sfm/sfm_data_triangulation.hpp>
 
-
-// Define the OpenMVG build and installed directory
-std::string openmvg_build = "/Users/Eddie/university/dissertation/libraries/sources/openMVG/build";
-
-// Define the OpenMVS build directory
-std::string openmvs_build = "/Users/Eddie/university/dissertation/libraries/sources/openMVS/openMVS_build";
-
-// Define the OpenPose build directory
-std::string openpose_root = "/Users/Eddie/university/dissertation/libraries/sources/openpose";
-
-
-// Function to convert a string to a char array (C-string)
-char * to_char_array(std::string string) {
-  char * char_array = new char [string.length() + 1];
-  strcpy(char_array, string.c_str());
-  return char_array;
-}
-
-
-// Function to execute bash commands with input and output
-std::string exec(const std::string string_cmd) {
-  char* cmd = to_char_array(string_cmd);
-  std::array<char, 128> buffer;
-  std::string result;
-  std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
-  if (!pipe) {
-    throw std::runtime_error("popen() failed!");
-  }
-  while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-    result += buffer.data();
-  }
-  return result;
-}
+#include "system.h"
 
 
 // Function to write vertices to .ply file
@@ -110,6 +78,7 @@ int main(int argc, const char** argv) {
   // Initialise arguments
   std::string input_dir = "";
   std::string output_dir = "";
+  int focal_length_pix = 0;
 
   // Loop through arguments and check for flags
   for (int i = 1; i < argc; i++) {
@@ -117,16 +86,14 @@ int main(int argc, const char** argv) {
       input_dir = argv[i + 1];
     } else if (strcmp(argv[i], "--output") == 0) {
       output_dir = argv[i + 1];
-    }
+    } else if (strcmp(argv[i], "--focal") == 0) {
+      focal_length_pix = std::stoi(argv[i + 1]);
+    } 
   }
 
   // Define boost file paths
   const boost::filesystem::path input_path = boost::filesystem::system_complete(input_dir);
   const boost::filesystem::path output_path = boost::filesystem::system_complete(output_dir);
-
-  const boost::filesystem::path openmvg_build_path = boost::filesystem::system_complete(openmvg_build);
-  const boost::filesystem::path openmvs_build_path = boost::filesystem::system_complete(openmvs_build);
-  const boost::filesystem::path openpose_root_path = boost::filesystem::system_complete(openpose_root);
 
   // Count number of files in input dir
   int num_files = 0;
@@ -135,55 +102,116 @@ int main(int argc, const char** argv) {
   }
 
 
+
   // ==============================================================
-  // STAGE 1 - Execute SFM pipeline
+  // STAGE 1 - Initialise sfm_data object with images
   // ==============================================================
-/*
+
   // Make directory for SFM output
-  boost::filesystem::path sfm_output_path = output_path / "sfm";
-  std::string mkdir_sfm_cmd = "mkdir " + sfm_output_path.string();
+  std::string mkdir_sfm_cmd = "mkdir " + (output_path / "sfm").string();
   system(mkdir_sfm_cmd.c_str());
 
-  std::cout << "Executing SFM pipeline" << std::endl;
-  boost::filesystem::path sfm_pipeline_path = openmvg_build_path / "software" / "SfM" / "SfM_GlobalPipeline.py";
-  std::string sfm_pipeline_cmd = "python " + sfm_pipeline_path.string() + " " + input_path.string() + " " + sfm_output_path.string();
-  std::string sfm_pipeline_response = exec(sfm_pipeline_cmd);
-*/
+  std::cout << "Initialising sfm_data object with images" << std::endl;
+  std::string init_image_listing_cmd;
+  if (focal_length_pix == 0) {
+    // Get global path to sensor width database file
+    boost::filesystem::path sensor_width_db = boost::filesystem::system_complete("../sensor_width_camera_database.txt");
+    init_image_listing_cmd = "openMVG_main_SfMInit_ImageListing -i " + input_path.string() + " -o " + (output_path / "sfm").string() + " -d " + sensor_width_db.string();
+  } else {
+    init_image_listing_cmd = "openMVG_main_SfMInit_ImageListing -i " + input_path.string() + " -o " + (output_path / "sfm").string() + " -f " + std::to_string(focal_length_pix);
+  }
+  std::string init_image_listing_response = exec(init_image_listing_cmd);
+
+
 
   // ==============================================================
-  // STAGE 2 - Convert SFM output to MVS scene
+  // STAGE 2 - Compute image features
   // ==============================================================
-/*
+
+  // Make directory for detected features and matches
+  std::string mkdir_matches_cmd = "mkdir " + (output_path / "sfm" / "matches").string();
+  system(mkdir_matches_cmd.c_str());
+  
+  std::cout << "Detecting features in images" << std::endl;
+  std::string compute_features_cmd = "openMVG_main_ComputeFeatures -i " + (output_path / "sfm" / "sfm_data.json").string() + " -o " + (output_path / "sfm" / "matches").string() + " -p HIGH";
+  std::string compute_features_response = exec(compute_features_cmd);
+
+
+
+  // ==============================================================
+  // STAGE 3 - Compute matching features
+  // ==============================================================
+  
+  std::cout << "Matching detected features" << std::endl;
+  std::string compute_matches_cmd = "openMVG_main_ComputeMatches -i " + (output_path / "sfm" / "sfm_data.json").string() + " -o " + (output_path / "sfm" / "matches").string() + " -g e";
+  std::string compute_matches_response = exec(compute_matches_cmd);
+
+
+
+  // ==============================================================
+  // STAGE 4 - Compute global SFM
+  // ==============================================================
+  
+  // Make directory for the global reconstruction
+  std::string mkdir_reconstruction_cmd = "mkdir " + (output_path / "sfm" / "reconstruction_global").string();
+  system(mkdir_sfm_cmd.c_str());
+
+  std::cout << "Computing global SFM" << std::endl;
+  std::string compute_global_sfm_cmd = "openMVG_main_GlobalSfM -i " + (output_path / "sfm" / "sfm_data.json").string() + " -m " + (output_path / "sfm" / "matches").string() + " -o " + (output_path / "sfm" / "reconstruction_global").string();
+  std::string compute_global_sfm_response = exec(compute_global_sfm_cmd);
+  
+
+
+  // ==============================================================
+  // STAGE 5 - Convert SFM output to MVS scene
+  // ==============================================================
+
   // Make directory for MVS output
-  boost::filesystem::path mvs_output_path = output_path / "mvs";
-  std::string mkdir_mvs_cmd = "mkdir " + mvs_output_path.string();
+  std::string mkdir_mvs_cmd = "mkdir " + (output_path / "mvs").string();
   system(mkdir_mvs_cmd.c_str());
 
   std::cout << "Converting SFM output to MVS scene" << std::endl;
-
   boost::filesystem::path sfm_data_bin_path = output_path / "sfm" / "reconstruction_global" / "sfm_data.bin";
   boost::filesystem::path mvs_scene_path = output_path / "mvs" / "scene.mvs";
   boost::filesystem::path undistorted_images_path = output_path / "mvs" / "scene_undistorted_images";
-  // Can execute the following because OpenMVG installed binaries to PATH dir
   std::string sfm_to_mvs_cmd = "openMVG_main_openMVG2openMVS -i " + sfm_data_bin_path.string() + " -o " + mvs_scene_path.string() + " -d " + undistorted_images_path.string();
   std::string sfm_to_mvs_response = exec(sfm_to_mvs_cmd);
-*/
+
+
 
   // ==============================================================
-  // STAGE 3 - Execute MVS pipeline
+  // STAGE 6 - Execute MVS pipeline
+  // ==============================================================
+
+  std::cout << "Densifying point cloud using MVS" << std::endl;
+  std::string mvs_pipeline_cmd = "/usr/local/bin/OpenMVS/DensifyPointCloud " + (output_path / "mvs" / "scene.mvs").string() + " -w " + (output_path / "mvs").string();
+  std::string mvs_pipeline_response = exec(mvs_pipeline_cmd);
+
+
+
+  // ==============================================================
+  // STAGE 7 - Reconstruct mesh from dense point cloud
+  // ==============================================================
+
+  std::cout << "Reconstructing a mesh from the dense point cloud" << std::endl;
+  std::string reconstruct_mesh_cmd = "/usr/local/bin/OpenMVS/ReconstructMesh " + (output_path / "mvs" / "scene_dense.mvs").string() + " -w " + (output_path / "mvs").string() + " -d 5";
+  std::string reconstruct_mesh_response = exec(reconstruct_mesh_cmd);
+
+
+
+  // ==============================================================
+  // STAGE 8 - Texture the reconstructed mesh
+  // ==============================================================
+
+  std::cout << "Texturing the mesh" << std::endl;
+  std::string texture_mesh_cmd = "/usr/local/bin/OpenMVS/TextureMesh " + (output_path / "mvs" / "scene_dense_mesh.mvs").string() + " -w " + (output_path / "mvs").string() + " --resolution-level 2";
+  std::string texture_mesh_response = exec(texture_mesh_cmd);
+
+
+  // ==============================================================
+  // STAGE 7 - Extract SFM data
   // ==============================================================
 /*
-  std::cout << "Densifying point cloud with MVS pipeline" << std::endl;
-
-  boost::filesystem::path densifypointcloud_path = openmvs_build_path / "bin" / "DensifyPointCloud";
-  std::string mvs_pipeline_cmd = densifypointcloud_path.string() + " " + mvs_scene_path.string() + " -w " + mvs_output_path.string();
-  std::string mvs_pipeline_response = exec(mvs_pipeline_cmd);
-*/
-
-  // ==============================================================
-  // STAGE 4 - Extract SFM data
-  // ==============================================================
-
   std::cout << "Loading sfm_data from sfm_data.bin" << std::endl;
 
   // Initialise empty sfm_data
@@ -263,12 +291,12 @@ int main(int argc, const char** argv) {
       intrinsic["disto_k3"][2].get<double>()
     );
   }
-
+*/
 
   // ==============================================================
-  // STAGE 5 - Search each view for hand keypoints
+  // STAGE 8 - Search each view for hand keypoints
   // ==============================================================
-
+/*
   // Create directory if it doesn't exist
   if (!boost::filesystem::is_directory(output_path / "hand_keypoints")) {
     boost::filesystem::create_directory(output_path / "hand_keypoints");
@@ -290,7 +318,14 @@ int main(int argc, const char** argv) {
 
   } else {
 
+    // Retrieve openpose root path from env variable
+    char * openpose_root = getenv("OPENPOSE_ROOT");
+    if (openpose_root == NULL) {
+      std::cout << "OPENPOSE_ROOT environment variable not set" << std::endl;
+    }
+
     // Change directory to OpenPose root
+    boost::filesystem::path openpose_root_path = boost::filesystem::system_complete(openpose_root);
     boost::filesystem::current_path(openpose_root_path);
 
     // Only extract keypoints for views with poses and intrinsics
@@ -360,10 +395,10 @@ int main(int argc, const char** argv) {
       }
     }
   }
-
+*/
 
   // ==============================================================
-  // STAGE 6 - Locate 21 keypoints in 3D space
+  // STAGE 9 - Locate 21 keypoints in 3D space
   // ==============================================================
 /*
   openMVG::sfm::SfM_Data_Structure_Computation_Robust structure_computation_robust = openMVG::sfm::SfM_Data_Structure_Computation_Robust(4.0, 3, 3, true);
@@ -484,7 +519,7 @@ int main(int argc, const char** argv) {
 */
 /*
   // ==============================================================
-  // STAGE 7 - Extract hand colour range from keypoint sets
+  // STAGE 10 - Extract hand colour range from keypoint sets
   // ==============================================================
 
   std::cout << "Extracting colour range and average colour from image keypoints" << std::endl;
