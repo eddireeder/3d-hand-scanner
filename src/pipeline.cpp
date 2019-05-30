@@ -165,7 +165,7 @@ int main(int argc, const char** argv) {
   std::string compute_global_sfm_response = exec(compute_global_sfm_cmd);
   
 
-
+/*
   // ==============================================================
   // STAGE 5 - Convert SFM output to MVS scene
   // ==============================================================
@@ -211,7 +211,7 @@ int main(int argc, const char** argv) {
   std::string texture_mesh_cmd = "/usr/local/bin/OpenMVS/TextureMesh " + (output_path / "mvs" / "scene_dense_mesh.mvs").string() + " -w " + (output_path / "mvs").string() + " --resolution-level 2";
   std::string texture_mesh_response = exec(texture_mesh_cmd);
 
-
+*/
   // ==============================================================
   // STAGE 7 - Extract SFM data
   // ==============================================================
