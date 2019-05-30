@@ -155,10 +155,6 @@ int main(int argc, const char** argv) {
   // ==============================================================
   // STAGE 4 - Compute global SFM
   // ==============================================================
-  
-  // Make directory for the global reconstruction
-  std::string mkdir_reconstruction_cmd = "mkdir " + (output_path / "sfm" / "reconstruction_global").string();
-  system(mkdir_sfm_cmd.c_str());
 
   std::cout << "Computing global SFM" << std::endl;
   std::string compute_global_sfm_cmd = "openMVG_main_GlobalSfM -i " + (output_path / "sfm" / "sfm_data.json").string() + " -m " + (output_path / "sfm" / "matches").string() + " -o " + (output_path / "sfm" / "reconstruction_global").string();
